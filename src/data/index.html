@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Heat Control Interface</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 0;
+      padding: 0;
+      background-color: #f0f0f0;
+    }
+    .container {
+      max-width: 800px;
+      margin: auto;
+      padding: 20px;
+      background-color: #fff;
+      box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+    }
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    h1 {
+      font-size: 24px;
+    }
+    p.authors {
+      font-style: italic;
+      font-size: 14px;
+    }
+    .form-group {
+      margin: 15px 0;
+    }
+    label {
+      display: block;
+      margin-bottom: 5px;
+    }
+    input[type="number"] {
+      width: 100%;
+      padding: 8px;
+      box-sizing: border-box;
+    }
+    .status-display {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-top: 20px;
+    }
+    .gauge-container {
+      text-align: center;
+      margin-top: 30px;
+    }
+
+    /* Switch visual estilo iOS */
+    .switch {
+      position: relative;
+      display: inline-block;
+      width: 50px;
+      height: 28px;
+      margin-left: 10px;
+    }
+    .switch input {
+      opacity: 0;
+      width: 0;
+      height: 0;
+    }
+    .slider {
+      position: absolute;
+      cursor: pointer;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background-color: #ccc;
+      transition: .4s;
+      border-radius: 28px;
+    }
+    .slider:before {
+      position: absolute;
+      content: "";
+      height: 22px;
+      width: 22px;
+      left: 3px;
+      bottom: 3px;
+      background-color: white;
+      transition: .4s;
+      border-radius: 50%;
+    }
+    input:checked + .slider {
+      background-color: #4CAF50;
+    }
+    input:checked + .slider:before {
+      transform: translateX(22px);
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>TONIANGO</h1>
+      <p class="authors">Authors: Hugo Abondano, Tomás Ospina, Juan Rodríguez, Nicolás Ospitia</p>
+    </header>
+
+    <p>Use this interface to monitor and control the heat function via ESP32. Adjust target temperature, maximum operation time, and toggle the function below.</p>
+
+    <div class="form-group">
+      <label for="desiredTemp">Desired Heat Temperature (°C)</label>
+      <input type="number" id="desiredTemp" value="80" step="0.1">
+    </div>
+
+    <div class="form-group">
+      <label for="maxTime">Maximum Heating Time (min)</label>
+      <input type="number" id="maxTime" value="5">
+    </div>
+
+    <div class="form-group">
+      <label for="functionSwitch">Function Activation</label>
+      <label class="switch">
+        <input type="checkbox" id="functionSwitch" onchange="toggleFunction()">
+        <span class="slider round"></span>
+      </label>
+    </div>
+    <p><strong>Fan:</strong> <span id="fanStatus">OFF</span></p>
+    <div class="status-display">
+      <div>
+        <p><strong>Remaining Time:</strong> <span id="remainingTime">0</span> min</p>
+        <p><strong>Sensor Value:</strong> <span id="sensorValue">0</span> °C</p>
+      </div>
+      <div class="gauge-container">
+        <canvas id="gauge" width="200" height="100"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let socket;
+    let gauge;
+    let currentGaugeValue = 0;
+
+    window.addEventListener('load', () => {
+      initWebSocket();
+      drawGauge(0);
+    });
+
+    function initWebSocket() {
+      socket = new WebSocket(`ws://${window.location.hostname}/ws`);
+      socket.onmessage = function(event) {
+        const data = JSON.parse(event.data);
+        document.getElementById('sensorValue').textContent = data.temperature.toFixed(1);
+        document.getElementById('remainingTime').textContent = (data.remainingTime / 60000).toFixed(1);
+        document.getElementById('functionSwitch').checked = data.functionActive;
+        document.getElementById('fanStatus').textContent = data.fanActive ? "ON" : "OFF";
+
+        animateGauge(data.temperature);
+      }
+    }
+
+    function toggleFunction() {
+      const state = document.getElementById('functionSwitch').checked;
+      const desiredTemp = parseFloat(document.getElementById('desiredTemp').value) || 80;
+      const maxTime = parseInt(document.getElementById('maxTime').value) || 5;
+      fetch('/toggle', {
+        method: 'POST',
+        body: JSON.stringify({
+          state: state,
+          desiredTemp: desiredTemp,
+          maxTime: maxTime
+        })
+      });
+    }
+
+    function drawGauge(value, maxValue = 100) {
+      const canvas = document.getElementById("gauge");
+      const ctx = canvas.getContext("2d");
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.beginPath();
+      ctx.arc(100, 100, 80, Math.PI, 2 * Math.PI);
+      ctx.lineWidth = 20;
+      ctx.strokeStyle = "#ddd";
+      ctx.stroke();
+      const angle = Math.PI + (value / maxValue) * Math.PI;
+      ctx.beginPath();
+      ctx.arc(100, 100, 80, Math.PI, angle);
+      let percent = value / maxValue;
+      if (percent > 0.9) {
+        ctx.strokeStyle = "#f44336"; // rojo
+      } else if (percent > 0.7) {
+        ctx.strokeStyle = "#FF9800"; // naranja
+      } else {
+        ctx.strokeStyle = "#4CAF50"; // verde
+      }
+
+      ctx.stroke();
+      ctx.font = "14px Arial";
+      ctx.fillStyle = "#333";
+      ctx.textAlign = "center";
+      ctx.fillText(`0°C`, 20, 120);  // Lado izquierdo
+      ctx.fillText(`${Math.round(maxValue)}°C`, 180, 120);  // Lado derecho
+      ctx.font = "16px Arial";
+      ctx.fillText(`${value.toFixed(1)}°C`, 100, 70);  // Valor actual centrado
+      // Aguja tipo velocímetro
+      const needleLength = 70;
+      const needleAngle = Math.PI + (value / maxValue) * Math.PI;
+      const needleX = 100 + needleLength * Math.cos(needleAngle);
+      const needleY = 100 + needleLength * Math.sin(needleAngle);
+
+      ctx.beginPath();
+      ctx.moveTo(100, 100);
+      ctx.lineTo(needleX, needleY);
+      ctx.strokeStyle = "#000";  // color de la aguja
+      ctx.lineWidth = 2;
+      ctx.stroke();
+
+      // Centro del velocímetro (punto negro)
+      ctx.beginPath();
+      ctx.arc(100, 100, 5, 0, 2 * Math.PI);
+      ctx.fillStyle = "#000";
+      ctx.fill();
+
+    }
+    function animateGauge(targetValue) {
+  // Obtener el valor deseado del input en lugar de usar una variable no definida
+  const maxValue = parseFloat(document.getElementById('desiredTemp').value) || 100;
+  const step = () => {
+    const delta = targetValue - currentGaugeValue;
+    if (Math.abs(delta) < 0.5) {
+      currentGaugeValue = targetValue;
+      drawGauge(currentGaugeValue, maxValue);
+      return;
+    }
+    currentGaugeValue += delta * 0.1;  // suavidad del 10%
+    drawGauge(currentGaugeValue, maxValue);
+    requestAnimationFrame(step);
+  };
+  requestAnimationFrame(step);
+}
+  </script>
+</body>
+</html>
