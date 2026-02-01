@@ -6,6 +6,10 @@
 #include <SPI.h>
 #include <Adafruit_MAX31856.h>
 
+// PCBOven - ESP32 oven controller
+// Implements a web-controlled heating routine using a MAX31856 thermocouple,
+// an SSR for heating (PWM), a PWM-driven fan, and a simple WebSocket UI.
+
 // Valores controlador
 #define MAX_CS 5
 #define INTERVAL 600000
@@ -16,6 +20,7 @@
 
 
 
+// WiFi credentials - change for your network before flashing
 const char* ssid = "iPhone TK";
 const char* password = "1234567890";
 
@@ -23,41 +28,50 @@ AsyncWebServer server(80);
 AsyncWebSocket ws("/ws");
 Adafruit_MAX31856 max31856 = Adafruit_MAX31856(MAX_CS);
 
-// Variables principales
-
+// Main control variables
+// `desiredTemp` is the target temperature in °C
 float desiredTemp = 80.0;
+// `maxTime` is the maximum heating time in milliseconds
 unsigned long maxTime = 5 * 60000UL; // en milisegundos
 unsigned long startTime = 0;
+// `functionActive` toggled from the web UI to enable heating routine
 bool functionActive = false;
+// `timerRunning` indicates the runtime timer is active
 bool timerRunning = false;
 
-/////////////////// Variables controlador /////////////////////////
+/////////////////// Controller / timing variables /////////////////////////
 
+// `previousMillis` used for periodic serial/log updates
 unsigned long previousMillis = 0;  // Store last time event occurred
+// Typical 1 second interval for printing/logging
 const long interval = 1000;  // Delay time in milliseconds (1 second)
+// Control output written to SSR PWM (0-255)
 float Output = 0;
 unsigned long currentTime, previousTime;
 double elapsedTime;
-unsigned int millis_before, millis_before_2;    //We use these to create the loop refresh rate
+unsigned int millis_before, millis_before_2;    // timing helpers
 unsigned int millis_now = 0;
-float pid_refresh_rate  = 50;                   //PID Refresh rate
-float seconds = 0;                              //Variable used to store the elapsed time                   
-float temperature = 0.0;                          //Store the temperature value here
+float pid_refresh_rate  = 50;                   // placeholder PID refresh rate
+float seconds = 0;                              // elapsed seconds placeholder
+// Latest temperature reading from thermocouple
+float temperature = 0.0;
 float MIN_VALUE = 0;
-float MAX_VALUE = 255;                      //Max PID value. You can change this.
-unsigned long previousMillis2 = 0;
+float MAX_VALUE = 255;                      // Max PWM value for SSR
+unsigned long previousMillis2 = 0; // used for long-interval fan decision
 
 
 //////////////////////// Funciones Ventilador /////////////////////
 
 void fanSetup() {
-  // Pin 27 salida de datos
+  // Configure PWM channel for the fan on pin 27
+  // Note: confirm channel/pin mapping for your ESP32 core
   ledcAttach(27,25000, 8);
+  // Start with fan off
   ledcWrite(27, 0);
 }
 
 void fanStatus(int vel) {
-  // Variable Vel rango de numeros de 0-255
+  // `vel` range 0-255; writes PWM duty to fan channel
   ledcWrite(27, vel);
 }
 

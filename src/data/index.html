@@ -97,6 +97,7 @@
   </style>
 </head>
 <body>
+  <!-- Simple web UI to monitor and control the oven via ESP32 -->
   <div class="container">
     <header>
       <h1>TONIANGO</h1>
@@ -135,28 +136,33 @@
   </div>
 
   <script>
-    let socket;
-    let gauge;
-    let currentGaugeValue = 0;
+  // WebSocket connection and gauge state
+  let socket;
+  let gauge;
+  let currentGaugeValue = 0;
 
     window.addEventListener('load', () => {
       initWebSocket();
       drawGauge(0);
     });
 
+    // Initialize WebSocket to receive telemetry JSON from the ESP32
     function initWebSocket() {
       socket = new WebSocket(`ws://${window.location.hostname}/ws`);
       socket.onmessage = function(event) {
         const data = JSON.parse(event.data);
+        // Update UI fields from server telemetry
         document.getElementById('sensorValue').textContent = data.temperature.toFixed(1);
         document.getElementById('remainingTime').textContent = (data.remainingTime / 60000).toFixed(1);
         document.getElementById('functionSwitch').checked = data.functionActive;
         document.getElementById('fanStatus').textContent = data.fanActive ? "ON" : "OFF";
 
+        // Smoothly animate gauge to new temperature
         animateGauge(data.temperature);
       }
     }
 
+    // Send toggle and parameters to the ESP32 via HTTP POST
     function toggleFunction() {
       const state = document.getElementById('functionSwitch').checked;
       const desiredTemp = parseFloat(document.getElementById('desiredTemp').value) || 80;
@@ -171,6 +177,7 @@
       });
     }
 
+    // Draws a semi-circular gauge on a canvas element
     function drawGauge(value, maxValue = 100) {
       const canvas = document.getElementById("gauge");
       const ctx = canvas.getContext("2d");
@@ -220,22 +227,23 @@
       ctx.fill();
 
     }
+    // Animate the gauge smoothly toward `targetValue`
     function animateGauge(targetValue) {
-  // Obtener el valor deseado del input en lugar de usar una variable no definida
-  const maxValue = parseFloat(document.getElementById('desiredTemp').value) || 100;
-  const step = () => {
-    const delta = targetValue - currentGaugeValue;
-    if (Math.abs(delta) < 0.5) {
-      currentGaugeValue = targetValue;
-      drawGauge(currentGaugeValue, maxValue);
-      return;
+      // Use the desired temperature as the gauge max for visual scaling
+      const maxValue = parseFloat(document.getElementById('desiredTemp').value) || 100;
+      const step = () => {
+        const delta = targetValue - currentGaugeValue;
+        if (Math.abs(delta) < 0.5) {
+          currentGaugeValue = targetValue;
+          drawGauge(currentGaugeValue, maxValue);
+          return;
+        }
+        currentGaugeValue += delta * 0.1;  // smoothing factor
+        drawGauge(currentGaugeValue, maxValue);
+        requestAnimationFrame(step);
+      };
+      requestAnimationFrame(step);
     }
-    currentGaugeValue += delta * 0.1;  // suavidad del 10%
-    drawGauge(currentGaugeValue, maxValue);
-    requestAnimationFrame(step);
-  };
-  requestAnimationFrame(step);
-}
   </script>
 </body>
 </html>
